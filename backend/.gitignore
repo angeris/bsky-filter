@@ -1,0 +1,4 @@
+node_modules
+tweetsDB
+package-lock.json
+twitter_dataset.csv

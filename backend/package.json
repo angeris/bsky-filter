@@ -1,0 +1,16 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@atproto/api": "^0.14.4",
+    "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
+    "express": "^4.21.2",
+    "node": "^18.20.7",
+    "nodeman": "^1.1.2",
+    "pouchdb": "^9.0.0"
+  },
+  "scripts": {
+    "start": "nodemon server.js",
+    "dev": "node server.js"
+  }
+}

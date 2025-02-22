@@ -1,85 +1,143 @@
-import React, { useState } from 'react';
-import {motion, useMotionValue, useTransform} from 'framer-motion';
-import { FaRetweet } from "react-icons/fa6";
+import React, { useState, useEffect } from "react";
+import { motion, useMotionValue, useTransform } from "framer-motion";
+import PouchDB from "pouchdb";
+import { FaRetweet, FaHeart, FaArrowLeft, FaArrowRight } from "react-icons/fa6";
 
-// Sample tweet data
-
-
-
-  // const [currentIndex, setCurrentIndex] = useState(0);
-  // const [gone, setGone] = useState(new Set());
+//  Initialize local database
+const db = new PouchDB("swiped_tweets");
 
 const SwipeCards = () => {
-  const cardData = [
-    { id: 1, username: "user1", text: "This is tweet number 1!", retweets:6, likes:5, timestamps: "date" },
-    { id: 2, username: "user2", text: "This is tweet number 1!", retweets:6, likes:5, timestamps: "date" },
-    { id: 3, username: "user3", text: "This is tweet number 1!", retweets:6, likes:5, timestamps: "date" },
-    // Add more tweets as needed
-  ];
-  return(
-    <div className='grid min-h-screen place-items-center bg-neutral-100'>
-      {cardData.toReversed().map((card) => {
-        return <Card key = {card.id} {...card}/>;
-      })}
-    </div>
-  )
-}
-  
-const Card = ({id, username, text, retweets, likes}) => {
+  const [tweets, setTweets] = useState([]);
+  const [gone, setGone] = useState(new Set());
+  const [post, setPost] = useState([]); // Stores swiped tweets
+  const [good, setGood] = useState([]); // Stores scores (0 for left, 1 for right)
 
-  const x = useMotionValue(0);
-  const opacity = useTransform(x, [-150, 0, 150], [0, 1, 0]);
-  const rotate = useTransform(x, [-150, 150], [-18, 18]);
-  
+  // ✅ Load previous swiped data from the local database
+  useEffect(() => {
+    fetch("http://localhost:5500/tweets")
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("Fetched data:", data);
+        setTweets(Array.isArray(data.tweets) ? data.tweets : []);
+      })
+      .catch((err) => {
+        console.error("Error fetching tweets:", err);
+        setTweets([]);
+      });
 
-  const handleDragEnd = (event, info) => {
-    if (info.offset.x < 0){
-      console.log(0)
-    }
-    else if (info.offset.x > 0){
-      console.log(1)
-    }
-  }
+    // ✅ Retrieve swiped data from IndexedDB
+    db.allDocs({ include_docs: true }).then((result) => {
+      const storedPosts = result.rows.map((row) => row.doc);
+      setPost(storedPosts.map((doc) => doc.tweet));
+      setGood(storedPosts.map((doc) => doc.score));
+      console.log("Restored from DB:", storedPosts);
+    });
+  }, []);
 
   return (
-        <motion.div 
-        className = "object-cover rounded-lg w-11/12 h-96 max-w-md bg-white rounded-3xl shadow-lg p-6 flex flex-col justify-between hover:cursor-grab active:cursor-grabbing"
-        style={{x, opacity, rotate, gridRow: 1, gridColumn: 1}}
-        drag="x" dragConstraints={{left: 0, right: 0}}
-        onDragEnd={handleDragEnd}>
-          <div className='font-semibold'>{username}</div>
-          <p class="text-gray-800">{text}</p>
-          <div className='w-full p-4 flex justify-between items-center'>
-            <div><FaRetweet/>: {retweets}</div>
-            <p>Likes: {likes}</p>
-            </div>
-            <div class="flex space-x-3 text-gray-500 text-sm">
-            <button class="flex items-center space-x-1 hover:text-blue-500">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 4v16m8-8H4" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span>3</span>
-            </button>
-            <button class="flex items-center space-x-1 hover:text-blue-500">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M7 4V2L2 7l5 5V8h12V4H7z" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span>5</span>
-            </button>
-            <button class="flex items-center space-x-1 hover:text-blue-500">
-              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 4h16v16H4V4z" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-              <span>7</span>
-            </button>
-          </div>
-        </motion.div>
-    // </div>
-  )
+    <div className="flex items-center justify-center w-full h-screen bg-gradient-to-br from-blue-100 to-purple-200">
+      <div className="relative flex justify-center items-center w-full max-w-md h-[500px]">
+        {tweets
+          .filter((tweet) => !gone.has(tweet.id))
+          .reverse()
+          .map((tweet) => (
+            <Card
+              key={tweet.id}
+              {...tweet}
+              setGone={setGone}
+              setPost={setPost}
+              setGood={setGood}
+            />
+          ))}
+      </div>
+    </div>
+  );
+};
+
+const Card = ({
+  id,
+  username,
+  text,
+  retweets,
+  likes,
+  setGone,
+  setPost,
+  setGood,
+}) => {
+  const x = useMotionValue(0);
+  const opacity = useTransform(x, [-200, 0, 200], [0, 1, 0]);
+  const rotate = useTransform(x, [-200, 200], [-15, 15]);
+
+  const handleSwipe = (score) => {
+    const tweetData = { id, username, text, retweets, likes };
+
+    db.put({
+      _id: new Date().toISOString(),
+      post: tweetData["text"],
+      good: score,
+    }).then(() => {
+      console.log("Saved to DB:", { post: tweetData["text"], good: score });
+    });
+
+    // ✅ Update local state
+    setGood((prev) => [...prev, score]);
+    setPost((prev) => [...prev, [tweetData]]);
+    setGone((prev) => new Set([...prev, id]));
+  };
+
+  const handleDragEnd = (event, info) => {
+    if (info.offset.x < -100) {
+      console.log(`Swiped Left: ${id} -> Score: 0`);
+      handleSwipe(0);
+    } else if (info.offset.x > 100) {
+      console.log(`Swiped Right: ${id} -> Score: 1`);
+      handleSwipe(1);
+    }
+  };
+
+  return (
+    <motion.div
+      className="absolute flex flex-col justify-between items-center bg-white shadow-xl rounded-3xl p-6 w-[350px] h-[450px] cursor-grab active:cursor-grabbing"
+      style={{ x, opacity, rotate }}
+      drag="x"
+      dragConstraints={{ left: 0, right: 0 }}
+      animate={
+        x.get() < -100
+          ? { x: -500, opacity: 0 }
+          : x.get() > 100
+          ? { x: 500, opacity: 0 }
+          : {}
+      }
+      onDragEnd={handleDragEnd}
+    >
+      {/* User Info */}
+      <div className="flex items-center space-x-3">
+        <div className="w-10 h-10 bg-gray-300 rounded-full"></div>
+        <div className="font-semibold text-gray-800">@{username}</div>
+      </div>
+
+      {/* Tweet Text */}
+      <p className="text-lg font-medium text-center text-gray-700">{text}</p>
+
+      {/* Tweet Actions */}
+      <div className="flex items-center justify-between w-full px-4 mt-4 text-gray-600">
+        <div className="flex items-center space-x-2">
+          <FaRetweet className="text-green-500" />
+          <span>{retweets}</span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <FaHeart className="text-red-500" />
+          <span>{likes}</span>
+        </div>
+      </div>
+
+      {/* Swipe Icons */}
+      <div className="absolute flex space-x-6 text-gray-500 transform -translate-x-1/2 bottom-4 left-1/2">
+        <FaArrowLeft className="w-8 h-8 cursor-pointer hover:text-red-500" />
+        <FaArrowRight className="w-8 h-8 cursor-pointer hover:text-blue-500" />
+      </div>
+    </motion.div>
+  );
 };
 
 export default SwipeCards;
-
-
- 
-
