@@ -3,7 +3,7 @@ import csv from "csv-parser";
 import express from "express";
 import cors from "cors";
 import PouchDB from "pouchdb";
-import { BskyAgent } from "@atproto/api";
+import {AtpAgent} from "@atproto/api";
 
 const db = new PouchDB("tweetsDB");
 const app = express();
@@ -11,9 +11,7 @@ app.use(cors());
 app.use(express.json());
 const port = 5500;
 
-const agent = new BskyAgent({
-  service: "https://bsky.social",
-});
+const agent = new AtpAgent({service: 'https://bsky.social'});
 
 await agent.login({
   identifier: "gbot.bsky.social",
@@ -21,16 +19,11 @@ await agent.login({
 });
 
 // Fetch tweets from Bluesky
-const { data } = await agent.app.bsky.feed.getFeed(
+const { data } = await agent.getTimeline(
   {
-    feed: "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot",
+    cursor: '',
     limit: 100,
   },
-  {
-    headers: {
-      "Accept-Language": "English",
-    },
-  }
 );
 
 // Process tweets into structured format
