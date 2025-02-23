@@ -1,88 +1,101 @@
 import React, { useState, useEffect } from "react";
-import { motion, useMotionValue, useTransform } from "framer-motion";
-import PouchDB from "pouchdb";
-import { FaRetweet, FaHeart} from "react-icons/fa6";
-
-//  Initialize local database
-const db = new PouchDB("swiped_tweets");
+import { useNavigate } from "react-router-dom";
+import classify, { loadTrainedModel } from "../trainModel"; // ✅ Import classify & loadTrainedModel
+import * as use from "@tensorflow-models/universal-sentence-encoder"; // ✅ Import USE model
 
 const StaticSwipeCards = () => {
   const [tweets, setTweets] = useState([]);
+  const [predictions, setPredictions] = useState([]);
+  const navigate = useNavigate();
 
-  // ✅ Load previous swiped data from the local database
   useEffect(() => {
     fetch("http://localhost:5500/tweets")
       .then((res) => res.json())
-      .then((data) => {
+      .then(async (data) => {
         console.log("Fetched data:", data);
-        setTweets(Array.isArray(data.tweets) ? data.tweets : []);
+        const tweetTexts = Array.isArray(data.tweets)
+          ? data.tweets.map((t) => t.text)
+          : [];
+
+        // ✅ Load trained model
+        const useModel = await use.load();
+        const classificationModel = await loadTrainedModel();
+
+        // ✅ Run classification on fetched tweets
+        const predictions = await classify(
+          useModel,
+          classificationModel,
+          tweetTexts
+        );
+        console.log("Predictions:", predictions);
+
+        setTweets(data.tweets);
+        setPredictions(predictions);
       })
       .catch((err) => {
         console.error("Error fetching tweets:", err);
         setTweets([]);
       });
-
-    // ✅ Retrieve swiped data from IndexedDB
-    // db.allDocs({ include_docs: true }).then((result) => {
-    //   const storedPosts = result.rows.map((row) => row.doc);
-    //   setPost(storedPosts.map((doc) => doc.tweet));
-    //   setGood(storedPosts.map((doc) => doc.score));
-    //   console.log("Restored from DB:", storedPosts);
-    // });
   }, []);
 
   return (
-    <div className="flex justify-center w-full bg-gradient-to-br from-blue-100 to-purple-200">
-      <div className="justify-center w-full items-center max-w-md">
-        {tweets
-          .reverse()
-          .map((tweet) => (
+    <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gradient-to-br from-blue-100 to-purple-200">
+      <button
+        className="px-6 py-3 mb-6 text-white transition-all bg-gray-600 rounded-lg shadow-lg hover:bg-gray-700"
+        onClick={() => navigate("/")}
+      >
+        Back to Swiping
+      </button>
+
+      {/* ✅ Display Predictions */}
+      <div className="w-full max-w-md space-y-4">
+        {tweets.length === 0 ? (
+          <p className="text-center text-gray-600">No posts available</p>
+        ) : (
+          tweets.map((tweet, index) => (
             <StaticCard
               key={tweet.id}
               {...tweet}
+              prediction={
+                predictions[index] !== undefined
+                  ? predictions[index]
+                  : "Loading..."
+              }
             />
-          ))}
+          ))
+        )}
       </div>
     </div>
   );
 };
 
-const StaticCard = ({
-  id,
-  username,
-  text,
-  retweets,
-  likes,
-}) => {
-  const x = useMotionValue(0);
-  const opacity = useTransform(x, [-200, 0, 200], [0, 1, 0]);
-  const rotate = useTransform(x, [-200, 200], [-15, 15]);
-
+const StaticCard = ({ username, text, retweets, likes, prediction }) => {
   return (
-    <motion.div
-      className="flex my-10 flex-col justify-between items-center bg-white rounded-3xl p-6 w-[350px] h-[450px]"
-    >
+    <div className="w-full p-4 transition-transform transform bg-white rounded-lg shadow-lg hover:scale-105">
       {/* User Info */}
-      <div className="flex items-center space-x-3">
+      <div className="flex items-center mb-2 space-x-3">
         <div className="w-10 h-10 bg-gray-300 rounded-full"></div>
-        <div className="font-semibold text-gray-800">@{username}</div>
+        <p className="font-semibold text-gray-800">@{username}</p>
       </div>
 
       {/* Tweet Text */}
-      <p className="text-lg font-medium text-center text-gray-700">{text}</p>
+      <p className="text-gray-700 text-md">{text}</p>
 
-      {/* Tweet Actions */}
-      <div className="flex items-center justify-between w-full px-4 mt-4 text-gray-600">
-        <div className="flex items-center space-x-2">
-          <FaRetweet className="text-green-500" />
-          <span>{retweets}</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <FaHeart className="text-red-500" />
-          <span>{likes}</span>
-        </div>
+      {/* Retweets & Likes */}
+      <div className="flex items-center justify-between mt-3 text-sm text-gray-600">
+        <span>🔁 {retweets} Retweets</span>
+        <span>❤️ {likes} Likes</span>
       </div>
-    </motion.div>
+
+      {/* ✅ Prediction Display */}
+      <div className="mt-3 text-lg font-bold text-center">
+        {prediction === 0
+          ? "👍 Positive"
+          : prediction === 1
+          ? "👎 Negative"
+          : "🔄 Processing..."}
+      </div>
+    </div>
   );
 };
 

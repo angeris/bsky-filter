@@ -6,7 +6,7 @@ export async function trainModel(trainingTexts, trainingLabels) {
   const useModel = await use.load();
   console.log("USE model loaded");
 
-  // Filter out undefined/null values from texts and labels
+  // ✅ Filter out undefined/null values from texts and labels
   const validData = trainingTexts
     .map((text, index) => ({ text, label: trainingLabels[index] }))
     .filter(
@@ -17,17 +17,14 @@ export async function trainModel(trainingTexts, trainingLabels) {
         item.label !== null
     );
 
-  // Extract clean texts and labels
+  // ✅ Extract clean texts and labels
   const filteredTexts = validData.map((item) => item.text);
   const filteredLabels = validData.map((item) => item.label);
 
   console.log("Filtered Training Data:", filteredTexts, filteredLabels);
 
-  const classificationModel = tf.sequential();
-  classificationModel.add(
-    tf.layers.dense({ units: 128, activation: "relu", inputShape: [512] })
-  );
-  classificationModel.add(tf.layers.dense({ units: 2, activation: "softmax" }));
+  // ✅ Load or Create Model
+  const classificationModel = await loadTrainedModel();
 
   console.log("Starting Classification Model Training...");
   await trainClassificationModel(
@@ -39,10 +36,33 @@ export async function trainModel(trainingTexts, trainingLabels) {
   );
   console.log("Classification Model Trained!");
 
-  // Run classification on a sample input
-  await runClassification(useModel, classificationModel, [
+  // ✅ Save Model After Training
+  await classificationModel.save("indexeddb://my-trained-model");
+
+  // ✅ Run classification on a sample input
+  const samplePredictions = await classify(useModel, classificationModel, [
     "ok you'd think this would be good but it's just not",
   ]);
+  console.log("Sample Predictions:", samplePredictions);
+}
+
+// ✅ Function to Load a Pre-trained Model from IndexedDB
+export async function loadTrainedModel() {
+  try {
+    const loadedModel = await tf.loadLayersModel(
+      "indexeddb://my-trained-model"
+    );
+    console.log("Model loaded from IndexedDB");
+    return loadedModel;
+  } catch (error) {
+    console.log("No saved model found, creating a new one.");
+    const newModel = tf.sequential();
+    newModel.add(
+      tf.layers.dense({ units: 128, activation: "relu", inputShape: [512] })
+    );
+    newModel.add(tf.layers.dense({ units: 2, activation: "softmax" }));
+    return newModel;
+  }
 }
 
 async function trainClassificationModel(
@@ -79,43 +99,32 @@ async function trainClassificationModel(
   console.log("Training Finished.");
 }
 
-async function runClassification(useModel, classificationModel, texts) {
-  const filteredTexts = texts.filter(
-    (text) => text !== undefined && text !== null
-  );
-  if (filteredTexts.length === 0) {
-    console.log("No valid text for classification.");
-    return;
-  }
-
-  const embeddings = await useModel.embed(filteredTexts);
-  const predictions = classificationModel.predict(embeddings);
-  console.log(`Predictions:`);
-  predictions.print();
-}
-
 async function classify(useModel, classificationModel, texts) {
   const filteredTexts = texts.filter(
     (text) => text !== undefined && text !== null
   );
   if (filteredTexts.length === 0) {
     console.log("No valid text for classification.");
-    return;
+    return [];
   }
 
   const embeddings = await useModel.embed(filteredTexts);
   const predictions = classificationModel.predict(embeddings);
 
-  const binaryPredictions = tf.tidy(() => { // Use tf.tidy for memory management
-    // Get the probability of the first class (index 0)
+  const binaryPredictions = tf.tidy(() => {
+    // Use tf.tidy for memory management
     const firstComponentProbabilities = predictions.slice([0, 0], [-1, 1]);
 
     // Compare probabilities to 0.5 and convert to binary (0 or 1)
-    const binaryTensor = firstComponentProbabilities.less(0.5).logicalNot().toInt();
+    const binaryTensor = firstComponentProbabilities
+      .less(0.5)
+      .logicalNot()
+      .toInt();
 
-    return binaryTensor.arraySync(); // Convert the tensor to a Javascript array
+    return binaryTensor.arraySync(); // Convert to JS array
   });
 
-  // Flatten the array if it's nested due to slice operation
-  return binaryPredictions.flat();
+  return binaryPredictions.flat(); // Ensure predictions are in correct format
 }
+
+export default classify;

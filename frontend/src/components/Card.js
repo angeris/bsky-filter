@@ -3,11 +3,13 @@ import { motion, useMotionValue, useTransform } from "framer-motion";
 import PouchDB from "pouchdb";
 import { trainModel } from "../trainModel.js";
 import { FaRetweet, FaHeart, FaArrowLeft, FaArrowRight } from "react-icons/fa6";
+import { useNavigate } from "react-router-dom";
 
 // Initialize local database
 const db = new PouchDB("swiped_tweets");
 
 const SwipeCards = () => {
+  const navigate = useNavigate();
   const [tweets, setTweets] = useState([]);
   const [gone, setGone] = useState(new Set());
   const [isTraining, setIsTraining] = useState(false);
@@ -25,20 +27,17 @@ const SwipeCards = () => {
       });
   }, []);
 
-  // ✅ Function to start training when "Done" is clicked
   const handleDone = async () => {
     setIsTraining(true);
     console.log("Fetching labeled data for training...");
 
-    // ✅ Fetch labeled data from IndexedDB
     const result = await db.allDocs({ include_docs: true });
     const storedData = result.rows.map((row) => row.doc);
-    const texts = storedData.map((doc) => doc.post); // ✅ Extract tweet texts
-    const labels = storedData.map((doc) => doc.good); // ✅ Extract swipe scores
+    const texts = storedData.map((doc) => doc.post);
+    const labels = storedData.map((doc) => doc.good);
 
     console.log("Starting training with data:", texts, labels);
 
-    // ✅ Call `trainModel()` with the swiped tweets & scores
     trainModel(texts, labels)
       .then(() => {
         console.log("Training Completed!");
@@ -52,6 +51,12 @@ const SwipeCards = () => {
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-screen bg-gradient-to-br from-blue-100 to-purple-200">
+      <button
+        className="px-6 py-3 mt-6 text-white bg-blue-500 rounded-lg hover:bg-blue-600"
+        onClick={() => navigate("/posts")}
+      >
+        See Posts
+      </button>
       <div className="relative flex justify-center items-center w-full max-w-md h-[500px]">
         {tweets
           .filter((tweet) => !gone.has(tweet.id))
@@ -61,7 +66,6 @@ const SwipeCards = () => {
           ))}
       </div>
 
-      {/* ✅ Done Button to Start Training */}
       <button
         className={`mt-6 px-6 py-3 rounded-lg text-white ${
           isTraining
@@ -85,13 +89,13 @@ const Card = ({ id, username, text, setGone }) => {
   const handleSwipe = (score) => {
     db.put({
       _id: new Date().toISOString(),
-      post: text, //  Store only tweet text
-      good: score, // Store only score (0 or 1)
+      post: text,
+      good: score,
     }).then(() => {
       console.log("Saved to DB:", { post: text, good: score });
     });
 
-    setGone((prev) => new Set([...prev, id])); // Remove swiped tweet
+    setGone((prev) => new Set([...prev, id]));
   };
 
   const handleDragEnd = (event, info) => {
@@ -130,5 +134,4 @@ const Card = ({ id, username, text, setGone }) => {
     </motion.div>
   );
 };
-
 export default SwipeCards;
