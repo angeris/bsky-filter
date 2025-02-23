@@ -93,3 +93,29 @@ async function runClassification(useModel, classificationModel, texts) {
   console.log(`Predictions:`);
   predictions.print();
 }
+
+async function classify(useModel, classificationModel, texts) {
+  const filteredTexts = texts.filter(
+    (text) => text !== undefined && text !== null
+  );
+  if (filteredTexts.length === 0) {
+    console.log("No valid text for classification.");
+    return;
+  }
+
+  const embeddings = await useModel.embed(filteredTexts);
+  const predictions = classificationModel.predict(embeddings);
+
+  const binaryPredictions = tf.tidy(() => { // Use tf.tidy for memory management
+    // Get the probability of the first class (index 0)
+    const firstComponentProbabilities = predictions.slice([0, 0], [-1, 1]);
+
+    // Compare probabilities to 0.5 and convert to binary (0 or 1)
+    const binaryTensor = firstComponentProbabilities.less(0.5).logicalNot().toInt();
+
+    return binaryTensor.arraySync(); // Convert the tensor to a Javascript array
+  });
+
+  // Flatten the array if it's nested due to slice operation
+  return binaryPredictions.flat();
+}
