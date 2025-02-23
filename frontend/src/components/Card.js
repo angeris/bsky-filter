@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { motion, useMotionValue, useTransform } from "framer-motion";
 import PouchDB from "pouchdb";
+import { trainModel } from "../trainModel.js";
 import { FaRetweet, FaHeart, FaArrowLeft, FaArrowRight } from "react-icons/fa6";
 
-//  Initialize local database
+// Initialize local database
 const db = new PouchDB("swiped_tweets");
 
 const SwipeCards = () => {
   const [tweets, setTweets] = useState([]);
   const [gone, setGone] = useState(new Set());
-  const [post, setPost] = useState([]); // Stores swiped tweets
-  const [good, setGood] = useState([]); // Stores scores (0 for left, 1 for right)
+  const [isTraining, setIsTraining] = useState(false);
 
-  // ✅ Load previous swiped data from the local database
   useEffect(() => {
     fetch("http://localhost:5500/tweets")
       .then((res) => res.json())
@@ -24,65 +23,75 @@ const SwipeCards = () => {
         console.error("Error fetching tweets:", err);
         setTweets([]);
       });
-
-    // ✅ Retrieve swiped data from IndexedDB
-    db.allDocs({ include_docs: true }).then((result) => {
-      const storedPosts = result.rows.map((row) => row.doc);
-      setPost(storedPosts.map((doc) => doc.tweet));
-      setGood(storedPosts.map((doc) => doc.score));
-      console.log("Restored from DB:", storedPosts);
-    });
   }, []);
 
+  // ✅ Function to start training when "Done" is clicked
+  const handleDone = async () => {
+    setIsTraining(true);
+    console.log("Fetching labeled data for training...");
+
+    // ✅ Fetch labeled data from IndexedDB
+    const result = await db.allDocs({ include_docs: true });
+    const storedData = result.rows.map((row) => row.doc);
+    const texts = storedData.map((doc) => doc.post); // ✅ Extract tweet texts
+    const labels = storedData.map((doc) => doc.good); // ✅ Extract swipe scores
+
+    console.log("Starting training with data:", texts, labels);
+
+    // ✅ Call `trainModel()` with the swiped tweets & scores
+    trainModel(texts, labels)
+      .then(() => {
+        console.log("Training Completed!");
+        setIsTraining(false);
+      })
+      .catch((err) => {
+        console.error("Training Error:", err);
+        setIsTraining(false);
+      });
+  };
+
   return (
-    <div className="flex items-center justify-center w-full h-screen bg-gradient-to-br from-blue-100 to-purple-200">
+    <div className="flex flex-col items-center justify-center w-full h-screen bg-gradient-to-br from-blue-100 to-purple-200">
       <div className="relative flex justify-center items-center w-full max-w-md h-[500px]">
         {tweets
           .filter((tweet) => !gone.has(tweet.id))
           .reverse()
           .map((tweet) => (
-            <Card
-              key={tweet.id}
-              {...tweet}
-              setGone={setGone}
-              setPost={setPost}
-              setGood={setGood}
-            />
+            <Card key={tweet.id} {...tweet} setGone={setGone} />
           ))}
       </div>
+
+      {/* ✅ Done Button to Start Training */}
+      <button
+        className={`mt-6 px-6 py-3 rounded-lg text-white ${
+          isTraining
+            ? "bg-gray-400 cursor-not-allowed"
+            : "bg-blue-500 hover:bg-blue-600"
+        }`}
+        onClick={handleDone}
+        disabled={isTraining}
+      >
+        {isTraining ? "Training in Progress..." : "Done & Train Model"}
+      </button>
     </div>
   );
 };
 
-const Card = ({
-  id,
-  username,
-  text,
-  retweets,
-  likes,
-  setGone,
-  setPost,
-  setGood,
-}) => {
+const Card = ({ id, username, text, setGone }) => {
   const x = useMotionValue(0);
   const opacity = useTransform(x, [-200, 0, 200], [0, 1, 0]);
   const rotate = useTransform(x, [-200, 200], [-15, 15]);
 
   const handleSwipe = (score) => {
-    const tweetData = { id, username, text, retweets, likes };
-
     db.put({
       _id: new Date().toISOString(),
-      post: tweetData["text"],
-      good: score,
+      post: text, //  Store only tweet text
+      good: score, // Store only score (0 or 1)
     }).then(() => {
-      console.log("Saved to DB:", { post: tweetData["text"], good: score });
+      console.log("Saved to DB:", { post: text, good: score });
     });
 
-    // ✅ Update local state
-    setGood((prev) => [...prev, score]);
-    setPost((prev) => [...prev, [tweetData]]);
-    setGone((prev) => new Set([...prev, id]));
+    setGone((prev) => new Set([...prev, id])); // Remove swiped tweet
   };
 
   const handleDragEnd = (event, info) => {
@@ -118,24 +127,6 @@ const Card = ({
 
       {/* Tweet Text */}
       <p className="text-lg font-medium text-center text-gray-700">{text}</p>
-
-      {/* Tweet Actions */}
-      <div className="flex items-center justify-between w-full px-4 mt-4 text-gray-600">
-        <div className="flex items-center space-x-2">
-          <FaRetweet className="text-green-500" />
-          <span>{retweets}</span>
-        </div>
-        <div className="flex items-center space-x-2">
-          <FaHeart className="text-red-500" />
-          <span>{likes}</span>
-        </div>
-      </div>
-
-      {/* Swipe Icons */}
-      <div className="absolute flex space-x-6 text-gray-500 transform -translate-x-1/2 bottom-4 left-1/2">
-        <FaArrowLeft className="w-8 h-8 cursor-pointer hover:text-red-500" />
-        <FaArrowRight className="w-8 h-8 cursor-pointer hover:text-blue-500" />
-      </div>
     </motion.div>
   );
 };
